@@ -1,8 +1,16 @@
 ---
 name: weather
-description: "Get current weather and forecasts via wttr.in or Open-Meteo. Use when: user asks about weather, temperature, or forecasts for any location. NOT for: historical weather data, severe weather alerts, or detailed meteorological analysis. No API key needed."
-homepage: https://wttr.in/:help
-metadata: { "openclaw": { "emoji": "🌤️", "requires": { "bins": ["curl"] } } }
+description: "Get current weather and forecasts via QWeather (和风天气) API or wttr.in. Use when: user asks about weather, temperature, or forecasts for any location. QWeather provides more accurate data for Chinese cities. wttr.in works for global cities without API key."
+homepage: https://dev.qweather.com/
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🌤️",
+        "requires": { "bins": ["curl"], "env": ["QWEATHER_API_KEY"] },
+        "primaryEnv": "QWEATHER_API_KEY",
+      },
+  }
 ---
 
 # Weather Skill
@@ -31,11 +39,65 @@ Get current weather conditions and forecasts.
 
 ## Location
 
-Always include a city, region, or airport code in weather queries.
+Always include a city, region, or airport code in weather queries. For Chinese cities, use city name (e.g., "北京", "上海"). For global cities, use city name or airport code.
 
 ## Commands
 
-### Current Weather
+### QWeather API (Recommended for Chinese cities)
+
+**Get current weather:**
+
+```bash
+# Replace 北京 with city name or city ID
+curl -s "https://devapi.qweather.com/v7/weather/now?location=101010100&key=$QWEATHER_API_KEY"
+```
+
+**Get 3-day forecast:**
+
+```bash
+curl -s "https://devapi.qweather.com/v7/weather/3d?location=101010100&key=$QWEATHER_API_KEY"
+```
+
+**Get 7-day forecast:**
+
+```bash
+curl -s "https://devapi.qweather.com/v7/weather/7d?location=101010100&key=$QWEATHER_API_KEY"
+```
+
+### Quick Examples
+
+**Beijing current weather:**
+
+```bash
+curl -s "https://devapi.qweather.com/v7/weather/now?location=101010100&key=$QWEATHER_API_KEY" | jq '.now'
+```
+
+**Beijing 3-day forecast:**
+
+```bash
+curl -s "https://devapi.qweather.com/v7/weather/3d?location=101010100&key=$QWEATHER_API_KEY" | jq '.daily[] | {date, tempMax, tempMin, textDay}'
+```
+
+**Shanghai (city ID: 101020100):**
+
+```bash
+curl -s "https://devapi.qweather.com/v7/weather/now?location=101020100&key=$QWEATHER_API_KEY"
+```
+
+### Common City IDs
+
+- 北京: 101010100
+- 上海: 101020100
+- 广州: 101280101
+- 深圳: 101280601
+- 杭州: 101210101
+- 南京: 101190101
+- 成都: 101270101
+- 武汉: 101200101
+- 西安: 101110101
+- 重庆: 101040100
+
+### wttr.in (Fallback for global cities)
 
 ```bash
 # One-line summary
@@ -44,37 +106,11 @@ curl "wttr.in/London?format=3"
 # Detailed current conditions
 curl "wttr.in/London?0"
 
-# Specific city
-curl "wttr.in/New+York?format=3"
-```
-
-### Forecasts
-
-```bash
-# 3-day forecast
-curl "wttr.in/London"
-
-# Week forecast
-curl "wttr.in/London?format=v2"
-
-# Specific day (0=today, 1=tomorrow, 2=day after)
-curl "wttr.in/London?1"
-```
-
-### Format Options
-
-```bash
-# One-liner
-curl "wttr.in/London?format=%l:+%c+%t+%w"
-
 # JSON output
-curl "wttr.in/London?format=j1"
-
-# PNG image
-curl "wttr.in/London.png"
+curl -s "wttr.in/London?format=j1"
 ```
 
-### Format Codes
+### Format Codes (wttr.in)
 
 - `%c` — Weather condition emoji
 - `%t` — Temperature
@@ -84,29 +120,8 @@ curl "wttr.in/London.png"
 - `%p` — Precipitation
 - `%l` — Location
 
-## Quick Responses
-
-**"What's the weather?"**
-
-```bash
-curl -s "wttr.in/London?format=%l:+%c+%t+(feels+like+%f),+%w+wind,+%h+humidity"
-```
-
-**"Will it rain?"**
-
-```bash
-curl -s "wttr.in/London?format=%l:+%c+%p"
-```
-
-**"Weekend forecast"**
-
-```bash
-curl "wttr.in/London?format=v2"
-```
-
 ## Notes
 
-- No API key needed (uses wttr.in)
-- Rate limited; don't spam requests
-- Works for most global cities
-- Supports airport codes: `curl wttr.in/ORD`
+- QWeather API requires API key configured in `skills.entries.weather.env.QWEATHER_API_KEY`
+- wttr.in works without API key but has rate limits
+- QWeather provides more accurate data for Chinese cities

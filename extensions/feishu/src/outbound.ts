@@ -8,14 +8,20 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   chunker: (text, limit) => getFeishuRuntime().channel.text.chunkMarkdownText(text, limit),
   chunkerMode: "markdown",
   textChunkLimit: 4000,
-  sendText: async ({ cfg, to, text, accountId }) => {
-    const result = await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined });
+  sendText: async ({ cfg, to, text, accountId, sessionKey }) => {
+    const result = await sendMessageFeishu({
+      cfg,
+      to,
+      text,
+      accountId: accountId ?? undefined,
+      sessionKey,
+    });
     return { channel: "feishu", ...result };
   },
-  sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
+  sendMedia: async ({ cfg, to, text, mediaUrl, accountId, sessionKey }) => {
     // Send text first if provided
     if (text?.trim()) {
-      await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined });
+      await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined, sessionKey });
     }
 
     // Upload and send media if URL provided
@@ -38,6 +44,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
           to,
           text: fallbackText,
           accountId: accountId ?? undefined,
+          sessionKey,
         });
         return { channel: "feishu", ...result };
       }
@@ -49,6 +56,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       to,
       text: text ?? "",
       accountId: accountId ?? undefined,
+      sessionKey,
     });
     return { channel: "feishu", ...result };
   },

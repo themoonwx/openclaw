@@ -282,3 +282,122 @@ This triggers an immediate wake event — Skippy gets pinged in seconds, not 10 
 - **exec is your friend:** `codex exec "prompt"` runs and exits cleanly - perfect for one-shots.
 - **submit vs write:** Use `submit` to send input + Enter, `write` for raw data without newline.
 - **Sass works:** Codex responds well to playful prompts. Asked it to write a haiku about being second fiddle to a space lobster, got: _"Second chair, I code / Space lobster sets the tempo / Keys glow, I follow"_ 🦞
+
+---
+
+## Claude Code + OpenClaw 集成 (Feb 2026)
+
+### 推荐调用方式
+
+#### 1. 子代理方式 (推荐用于复杂任务)
+
+```typescript
+// 使用 sessions_spawn 派发任务，避免 Pre-flight Check 卡住问题
+sessions_spawn({
+  task: "你的任务描述",
+  label: "任务标签",
+  runTimeoutSeconds: 300,
+});
+```
+
+#### 2. 直接运行 (用于简单任务)
+
+```bash
+# 简单命令
+claude --print "echo test"
+
+# 需要权限绕过时
+claude -p --dangerously-skip-permissions "任务描述"
+```
+
+### Hook 配置 (零轮询方案)
+
+配置 SessionEnd Hook，CC 任务完成后自动通知 OpenClaw：
+
+**1. OpenClaw Gateway 配置** (`~/.openclaw/openclaw.json`):
+
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "token": "your-token",
+    "path": "/hooks"
+  }
+}
+```
+
+**2. CC Hook 脚本** (`~/.claude/hooks/notify-openclaw.sh`):
+
+```bash
+#!/bin/bash
+INPUT_JSON=$(cat)
+
+# 保存结果
+mkdir -p ~/.claude/results
+echo "$INPUT_JSON" > ~/.claude/results/latest.json
+
+# 提取结果摘要
+TASK_RESULT=$(echo "$INPUT_JSON" | jq -r '.result // "unknown"' 2>/dev/null | head -c 200)
+
+# 唤醒 OpenClaw
+curl -s -X POST "http://127.0.0.1:18789/hooks/wake" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
+  -d "{\"text\": \"CC任务完成: ${TASK_RESULT}\", \"mode\": \"now\"}"
+
+exit 0
+```
+
+**3. CC 配置** (`~/.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/notify-openclaw.sh",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 权限配置优化
+
+Pre-flight Check 可能变慢，建议添加权限规则：
+
+```json
+{
+  "permissionMode": "bypassPermissions",
+  "permissions": {
+    "allow": [
+      "Bash(echo *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(rm *)",
+      "Bash(node *)",
+      "Bash(cd *)",
+      "Bash(grep *)",
+      "Write(//tmp/**)",
+      "Write(//home/ubuntu/**)"
+    ]
+  }
+}
+```
+
+### 完整流程
+
+1. OpenClaw 派发任务给 CC
+2. CC 在后台独立运行
+3. CC 完成任务 → SessionEnd Hook 触发
+4. Hook 脚本写结果到 `latest.json`
+5. Hook 调用 wake API 唤醒 OpenClaw
+6. OpenClaw 读取结果，推送通知给用户
+
+**优势**: 零轮询，Token 消耗极低

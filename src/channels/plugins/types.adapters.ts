@@ -88,6 +88,8 @@ export type ChannelOutboundContext = {
   identity?: OutboundIdentity;
   deps?: OutboundSendDeps;
   silent?: boolean;
+  /** Session key for the current outbound session (used to identify message source) */
+  sessionKey?: string;
 };
 
 export type ChannelOutboundPayloadContext = ChannelOutboundContext & {

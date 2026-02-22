@@ -8,12 +8,19 @@ services:
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+      HTTP_PROXY: socks5://127.0.0.1:1080
+      HTTPS_PROXY: socks5://127.0.0.1:1080
+      ALL_PROXY: socks5://127.0.0.1:1080
+      http_proxy: socks5://127.0.0.1:1080
+      https_proxy: socks5://127.0.0.1:1080
+      all_proxy: socks5://127.0.0.1:1080
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
     ports:
       - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+    network_mode: host
     init: true
     restart: unless-stopped
     command:
@@ -37,10 +44,14 @@ services:
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+      HTTP_PROXY: socks5://127.0.0.1:1080
+      HTTPS_PROXY: socks5://127.0.0.1:1080
+      ALL_PROXY: socks5://127.0.0.1:1080
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
     stdin_open: true
     tty: true
+    network_mode: host
     init: true
     entrypoint: ["node", "dist/index.js"]

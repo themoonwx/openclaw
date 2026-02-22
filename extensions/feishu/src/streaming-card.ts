@@ -220,4 +220,14 @@ export class FeishuStreamingSession {
   isActive(): boolean {
     return this.state !== null && !this.closed;
   }
+
+  /** Get the current message ID */
+  getMessageId(): string | null {
+    return this.state?.messageId ?? null;
+  }
+
+  /** Get the current card ID */
+  getCardId(): string | null {
+    return this.state?.cardId ?? null;
+  }
 }

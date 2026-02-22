@@ -38,7 +38,9 @@ const RenderModeSchema = z.enum(["auto", "raw", "card"]).optional();
 
 // Streaming card mode: when enabled, card replies use Feishu's Card Kit streaming API
 // for incremental text display with a "Thinking..." placeholder
+// Note: enableStreaming is an alias for streaming (for backward compatibility)
 const StreamingModeSchema = z.boolean().optional();
+const EnableStreamingSchema = z.boolean().optional();
 
 const BlockStreamingCoalesceSchema = z
   .object({
@@ -148,6 +150,7 @@ export const FeishuAccountConfigSchema = z
     heartbeat: ChannelHeartbeatVisibilitySchema,
     renderMode: RenderModeSchema,
     streaming: StreamingModeSchema, // Enable streaming card mode (default: true)
+    enableStreaming: EnableStreamingSchema, // Alias for streaming (for backward compatibility)
     tools: FeishuToolsConfigSchema,
   })
   .strict();
@@ -185,6 +188,7 @@ export const FeishuConfigSchema = z
     heartbeat: ChannelHeartbeatVisibilitySchema,
     renderMode: RenderModeSchema, // raw = plain text (default), card = interactive card with markdown
     streaming: StreamingModeSchema, // Enable streaming card mode (default: true)
+    enableStreaming: EnableStreamingSchema, // Alias for streaming (for backward compatibility)
     tools: FeishuToolsConfigSchema,
     // Dynamic agent creation for DM users
     dynamicAgentCreation: DynamicAgentCreationSchema,
