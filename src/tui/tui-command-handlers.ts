@@ -320,7 +320,7 @@ export function createCommandHandlers(context: CommandHandlerContext) {
             providerSet.add(m.provider);
           }
         }
-        const providerNames = Array.from(providerSet).sort();
+        const providerNames = Array.from(providerSet).toSorted();
 
         if (!args) {
           // Show list of available providers
