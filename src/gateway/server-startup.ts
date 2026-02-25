@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import { initializeMultiAgentGateway } from "../multi-agent/gateway-integration.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
   getModelRefStatus,
@@ -161,6 +162,16 @@ export async function startGatewaySidecars(params: {
 
   void startGatewayMemoryBackend({ cfg: params.cfg, log: params.log }).catch((err) => {
     params.log.warn(`qmd memory startup initialization failed: ${String(err)}`);
+  });
+
+  // Initialize Multi-Agent system
+  void initializeMultiAgentGateway({
+    workspaceDir: params.defaultWorkspaceDir,
+    configPath: "./config/multi-agent.yaml",
+    defaultProvider: "minimax",
+    defaultModel: "MiniMax-M2.5",
+  }).catch((err) => {
+    params.log.warn(`multi-agent system initialization failed: ${String(err)}`);
   });
 
   if (shouldWakeFromRestartSentinel()) {

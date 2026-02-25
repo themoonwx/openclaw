@@ -310,6 +310,66 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       case "models":
         await openModelSelector();
         break;
+      case "provider": {
+        // List available providers and allow quick switch
+        // Get available models and extract unique providers
+        const models = await client.listModels();
+        const providerSet = new Set<string>();
+        for (const m of models) {
+          if (m.provider) {
+            providerSet.add(m.provider);
+          }
+        }
+        const providerNames = Array.from(providerSet).sort();
+
+        if (!args) {
+          // Show list of available providers
+          if (providerNames.length === 0) {
+            chatLog.addSystem("No providers configured. Add providers in config.");
+            break;
+          }
+          const currentProvider = state.sessionInfo.modelProvider;
+          const list = providerNames
+            .map((p) => (p === currentProvider ? `* ${p}` : `  ${p}`))
+            .join("\n");
+          chatLog.addSystem(`Available providers:\n${list}\n\nUse /provider <name> to switch`);
+          break;
+        }
+
+        // Switch to specified provider
+        const targetProvider = args.toLowerCase().trim();
+        const matchedProvider = providerNames.find(
+          (p) => p.toLowerCase() === targetProvider || p.toLowerCase().startsWith(targetProvider),
+        );
+
+        if (!matchedProvider) {
+          chatLog.addSystem(
+            `Provider "${args}" not found. Available: ${providerNames.join(", ")}`,
+          );
+          break;
+        }
+
+        // Get first model from the provider
+        const providerModels = models.filter((m) => m.provider === matchedProvider);
+        if (providerModels.length === 0) {
+          chatLog.addSystem(`Provider "${matchedProvider}" has no models available.`);
+          break;
+        }
+
+        const targetModel = providerModels[0].id;
+        try {
+          const result = await client.patchSession({
+            key: state.currentSessionKey,
+            model: `${matchedProvider}/${targetModel}`,
+          });
+          chatLog.addSystem(`Switched to ${matchedProvider}/${targetModel}`);
+          applySessionInfoFromPatch(result);
+          await refreshSessionInfo();
+        } catch (err) {
+          chatLog.addSystem(`provider switch failed: ${String(err)}`);
+        }
+        break;
+      }
       case "think":
         if (!args) {
           const levels = formatThinkingLevels(

@@ -52,6 +52,10 @@ export function getSlashCommands(options: SlashCommandOptions = {}): SlashComman
     },
     { name: "models", description: "Open model picker" },
     {
+      name: "provider",
+      description: "Switch API provider (or list available)",
+    },
+    {
       name: "think",
       description: "Set thinking level",
       getArgumentCompletions: (prefix) =>
@@ -148,6 +152,7 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/agent <id> (or /agents)",
     "/session <key> (or /sessions)",
     "/model <provider/model> (or /models)",
+    "/provider <name> (list available)",
     `/think <${thinkLevels}>`,
     "/verbose <on|off>",
     "/reasoning <on|off>",

@@ -11,6 +11,13 @@ import {
 } from "./reply/reply-dispatcher.js";
 import type { FinalizedMsgContext, MsgContext } from "./templating.js";
 import type { GetReplyOptions } from "./types.js";
+import {
+  isMultiAgentRequest,
+  runMultiAgentProject,
+  getMultiAgentSystem,
+  type RouteResult,
+} from "../multi-agent/gateway-integration.js";
+import { routeMessage } from "../multi-agent/trigger.js";
 
 export type DispatchInboundResult = DispatchFromConfigResult;
 
@@ -39,6 +46,48 @@ export async function dispatchInboundMessage(params: {
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
 }): Promise<DispatchInboundResult> {
+  const messageBody = params.ctx.Body?.trim() ?? "";
+
+  // Check if multi-agent system is enabled and if this is a multi-agent request
+  const multiAgentSystem = getMultiAgentSystem();
+  console.log("[Trigger] MultiAgent check - system exists:", !!multiAgentSystem, "enabled:", multiAgentSystem?.isEnabled());
+
+  if (multiAgentSystem && multiAgentSystem.isEnabled()) {
+    // Use three-layer trigger to determine message routing
+    const route = routeMessage(messageBody);
+    console.log("[Trigger] Route result:", route.mode, "content:", messageBody.substring(0, 30));
+
+    if (route.mode === "multi_agent") {
+      // Full multi-agent project flow
+      console.log("[Trigger] Routing to multi-agent mode:", route.content.substring(0, 50));
+      try {
+        const result = await runMultiAgentProject(route.content);
+        // Send the result back to the user
+        await params.dispatcher.send(result);
+        return {
+          ok: true,
+          final: result,
+          toolResults: [],
+          agentErrors: [],
+        };
+      } catch (err) {
+        console.error("[Trigger] Multi-agent error:", err);
+        await params.dispatcher.send("❌ 多 Agent 执行失败，请检查日志");
+        return {
+          ok: false,
+          final: "多 Agent 执行失败",
+          toolResults: [],
+          agentErrors: [String(err)],
+        };
+      }
+    } else if (route.mode === "single_agent") {
+      // Single agent mode - handled separately
+      console.log("[Trigger] Single agent mode:", route.targetAgent);
+      // For now, fall through to normal flow (single agent handling needs more integration)
+    }
+    // For suggest_project and single_llm modes, continue with normal flow
+  }
+
   const finalized = finalizeInboundContext(params.ctx);
   return await withReplyDispatcher({
     dispatcher: params.dispatcher,
