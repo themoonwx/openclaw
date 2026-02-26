@@ -3,7 +3,14 @@
 // Three-layer trigger mechanism for multi-agent system
 
 export interface RouteResult {
-  mode: "multi_agent" | "single_agent" | "suggest_project" | "single_llm";
+  mode:
+    | "multi_agent"
+    | "single_agent"
+    | "suggest_project"
+    | "single_llm"
+    | "cc_task"
+    | "cc_task_with_context"
+    | "cc_progress";
   content: string;
   targetAgent?: string;
   suggestion?: string;
@@ -62,7 +69,67 @@ export function routeMessage(message: string): RouteResult {
   const trimmed = message.trim();
 
   // ========================================
-  // First Priority: Explicit project command
+  // Query CC task progress
+  // ========================================
+  const progressMatch = trimmed.match(/^\/(进度|progress|status|ps)\s*$/i);
+  if (progressMatch) {
+    return {
+      mode: "cc_progress",
+      content: "",
+    };
+  }
+
+  // ========================================
+  // First Priority: Claude Code task with context (/cc) - include conversation history
+  // ========================================
+  const ccWithContextMatch = trimmed.match(/^\/(cc)\s+(.+)/s);
+  if (ccWithContextMatch) {
+    return {
+      mode: "cc_task_with_context",
+      content: ccWithContextMatch[2],
+    };
+  }
+
+  // ========================================
+  // Second Priority: Claude Code task command (/c or /task) - direct execution
+  // ========================================
+  const ccTaskMatch = trimmed.match(/^\/(c|task)\s+(.+)/s);
+  if (ccTaskMatch) {
+    return {
+      mode: "cc_task",
+      content: ccTaskMatch[2],
+    };
+  }
+
+  // Block code modification requests - redirect to CC
+  const codeKeywords = [
+    /修改.*代码/,
+    /写.*代码/,
+    /开发/,
+    /实现/,
+    /创建.*文件/,
+    /编写.*脚本/,
+    /按.*方案/,
+    /按这个/,
+    /execute|按/,
+    /modify.*code/,
+    /write.*code/,
+    /develop/,
+    /implement/,
+    /create.*file/,
+  ];
+
+  for (const keyword of codeKeywords) {
+    if (keyword.test(trimmed)) {
+      return {
+        mode: "cc_task_with_context",
+        content: trimmed,
+      };
+    }
+  }
+
+  // ========================================
+  // Second Priority: Explicit project command
   // ========================================
   const projectMatch = trimmed.match(/^\/(project|p)\s+(.+)/s);
   if (projectMatch) {

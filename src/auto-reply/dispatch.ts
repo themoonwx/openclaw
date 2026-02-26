@@ -1,4 +1,12 @@
 import type { OpenClawConfig } from "../config/config.js";
+import {
+  runMultiAgentProject,
+  getMultiAgentSystem,
+  setNotifyUserFunction,
+  getCCTaskQueueStatus,
+  getCurrentTaskProgress,
+} from "../multi-agent/gateway-integration.js";
+import { routeMessage } from "../multi-agent/trigger.js";
 import type { DispatchFromConfigResult } from "./reply/dispatch-from-config.js";
 import { dispatchReplyFromConfig } from "./reply/dispatch-from-config.js";
 import { finalizeInboundContext } from "./reply/inbound-context.js";
@@ -11,13 +19,6 @@ import {
 } from "./reply/reply-dispatcher.js";
 import type { FinalizedMsgContext, MsgContext } from "./templating.js";
 import type { GetReplyOptions } from "./types.js";
-import {
-  isMultiAgentRequest,
-  runMultiAgentProject,
-  getMultiAgentSystem,
-  type RouteResult,
-} from "../multi-agent/gateway-integration.js";
-import { routeMessage } from "../multi-agent/trigger.js";
 
 export type DispatchInboundResult = DispatchFromConfigResult;
 
@@ -48,9 +49,19 @@ export async function dispatchInboundMessage(params: {
 }): Promise<DispatchInboundResult> {
   const messageBody = params.ctx.Body?.trim() ?? "";
 
+  // Set up notification function for CC task queue
+  setNotifyUserFunction((text: string) => {
+    params.dispatcher.send(text).catch(console.error);
+  });
+
   // Check if multi-agent system is enabled and if this is a multi-agent request
   const multiAgentSystem = getMultiAgentSystem();
-  console.log("[Trigger] MultiAgent check - system exists:", !!multiAgentSystem, "enabled:", multiAgentSystem?.isEnabled());
+  console.log(
+    "[Trigger] MultiAgent check - system exists:",
+    !!multiAgentSystem,
+    "enabled:",
+    multiAgentSystem?.isEnabled(),
+  );
 
   if (multiAgentSystem && multiAgentSystem.isEnabled()) {
     // Use three-layer trigger to determine message routing
@@ -84,6 +95,47 @@ export async function dispatchInboundMessage(params: {
       // Single agent mode - handled separately
       console.log("[Trigger] Single agent mode:", route.targetAgent);
       // For now, fall through to normal flow (single agent handling needs more integration)
+    } else if (route.mode === "cc_task") {
+      // Claude Code task queue mode
+      console.log("[Trigger] CC task mode:", route.content.substring(0, 50));
+
+      // Get queue status
+      const queueStatus = getCCTaskQueueStatus();
+
+      // Notify user that task is queued
+      await params.dispatcher.send(
+        `📋 任务已加入 CC 队列\n\n当前队列: ${queueStatus.pending} 个待处理, ${queueStatus.running} 个执行中`,
+      );
+
+      return {
+        ok: true,
+        final: "任务已加入队列",
+        toolResults: [],
+        agentErrors: [],
+      };
+    } else if (route.mode === "cc_progress") {
+      // Query CC task progress
+      console.log("[Trigger] CC progress query");
+
+      const progress = getCurrentTaskProgress();
+      const queueStatus = getCCTaskQueueStatus();
+
+      if (!progress || queueStatus.running === 0) {
+        await params.dispatcher.send(
+          `📊 CC 任务状态\n\n队列: ${queueStatus.pending} 待处理, ${queueStatus.running} 执行中, ${queueStatus.completed} 已完成\n\n当前无任务在执行`,
+        );
+      } else {
+        await params.dispatcher.send(
+          `📊 **任务 #${progress.taskId} 进度**\n\n状态: ${progress.status}\n\n---\n${progress.output.slice(-2000)}`,
+        );
+      }
+
+      return {
+        ok: true,
+        final: "已返回进度",
+        toolResults: [],
+        agentErrors: [],
+      };
     }
     // For suggest_project and single_llm modes, continue with normal flow
   }
