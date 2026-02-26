@@ -11,6 +11,8 @@ import type { MentionTarget } from "./mention.js";
 import { buildMentionedMessage, buildMentionedCardContent } from "./mention.js";
 import { getMessageTracker } from "./message-tracker.js";
 import { getFeishuRuntime } from "./runtime.js";
+import { assertFeishuMessageApiSuccess, toFeishuSendResult } from "./send-result.js";
+import { resolveFeishuSendTarget } from "./send-target.js";
 import { FeishuStreamingSession } from "./streaming-card.js";
 import { resolveReceiveIdType, normalizeFeishuTarget } from "./targets.js";
 import type { FeishuSendResult, ResolvedFeishuAccount } from "./types.js";
