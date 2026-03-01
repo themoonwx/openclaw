@@ -1,24 +1,24 @@
 # Multi-Agent Configuration
 
-enabled: true  # Set to false to disable and use original single-LLM flow
+enabled: true # Set to false to disable and use original single-LLM flow
 
 scheduler:
-  max_concurrent_claude_code: 1  # 4GB memory can only run 1 subprocess
-  task_timeout_seconds: 300       # Max 5 minutes per task
+  max_concurrent_claude_code: 1 # 4GB memory can only run 1 subprocess
+  task_timeout_seconds: 300 # Max 5 minutes per task
   max_retry: 2
   poll_interval_seconds: 1
 
 memory_guard:
-  critical_mb: 200    # Force terminate subprocess if below 200MB
-  warning_mb: 500     # Pause scheduler if below 500MB
+  critical_mb: 200 # Force terminate subprocess if below 200MB
+  warning_mb: 500 # Pause scheduler if below 500MB
   check_interval_seconds: 3
 
 human_checkpoints:
-  after_requirement: true   # Human approval after PRD
-  after_architecture: true   # Human approval after architecture
+  after_requirement: true # Human approval after PRD
+  after_architecture: true # Human approval after architecture
   after_coding: false
   after_review: false
-  before_deploy: true       # Human approval before deployment
+  before_deploy: true # Human approval before deployment
 
 # Trigger multi-agent mode based on keywords or intent detection
 triggers:

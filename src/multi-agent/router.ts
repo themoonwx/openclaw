@@ -9,6 +9,7 @@ export interface RoutableMessage {
   to?: string;
   taskId?: string;
   projectId?: string;
+  [key: string]: unknown;
 }
 
 const ROLE_GROUPS: Record<string, Set<string>> = {

@@ -65,6 +65,34 @@ const PROJECT_HINTS = [
   /develop\s+a/,
 ];
 
+// 上下文续话关键词 - 当用户说这些时，需要从主session获取历史
+const CONTINUE_CONTEXT_HINTS = [
+  /继续/,
+  /接着/,
+  /之前/,
+  /刚才/,
+  /之前我们/,
+  /基于之前的/,
+  /接着之前的/,
+  /继续之前的/,
+  /沿用之前的/,
+  /基于我们之前/,
+  /使用之前的/,
+  /按(照|我们|这个|刚才)/,
+  /根据之前/,
+  /按照(刚才|之前|我们)/,
+  /apply.*previous/i,
+  /continue.*from/i,
+  /based.*previous/i,
+  /following.*previous/i,
+  /based.*discussion/i,
+  /continue.*task/i,
+];
+
+export function needsContext(message: string): boolean {
+  return CONTINUE_CONTEXT_HINTS.some((hint) => hint.test(message));
+}
+
 export function routeMessage(message: string): RouteResult {
   const trimmed = message.trim();
 
@@ -91,7 +119,51 @@ export function routeMessage(message: string): RouteResult {
   }
 
   // ========================================
-  // Second Priority: Claude Code task command (/c or /task) - direct execution
+  // Second Priority: /Role direct call (e.g., /产品, /测试) - BEFORE /c, /p commands
+  // ========================================
+  const slashRoleMatch = trimmed.match(/^\/([a-zA-Z\u4e00-\u9fa5]+)\s*(.*)$/);
+  if (slashRoleMatch) {
+    const alias = slashRoleMatch[1].toLowerCase();
+    // Skip if it's a known command (/c, /cc, /task, /p, /project)
+    if (!["c", "cc", "task", "p", "project"].includes(alias)) {
+      const content = slashRoleMatch[2].trim();
+      const agentRole = AGENT_ALIASES[alias];
+      if (agentRole) {
+        return {
+          mode: "single_agent",
+          targetAgent: agentRole,
+          content: content || "你好",
+        };
+      }
+    }
+  }
+
+  // ========================================
+  // Second Priority (alt): Natural language role call without / prefix
+  // For Discord where / might be intercepted by Discord's slash commands
+  // e.g., "测试 你好" or "@测试 你好" or "叫测试写一个"
+  // Also handles Discord mentions like "<@123456789> 测试 你好"
+  // ========================================
+  // First strip Discord mention tags like <@123456789> or <@!123456789> or <@1475146625256263933>
+  // Also handle cases where mention might be truncated like <@123456789
+  const cleanedText = trimmed.replace(/^<@!?\d+>\s*/g, '').replace(/^<@\d+>\s*/g, '').replace(/^@\d+\s*/g, '');
+
+  const naturalRoleMatch = cleanedText.match(/^(?:@|叫|请|让)?(测试|产品|前端|后端|运维|架构|qa|fe|be|ops)\s+(.+)$/i);
+  if (naturalRoleMatch) {
+    const alias = naturalRoleMatch[1].toLowerCase();
+    const content = naturalRoleMatch[2].trim();
+    const agentRole = AGENT_ALIASES[alias];
+    if (agentRole) {
+      return {
+        mode: "single_agent",
+        targetAgent: agentRole,
+        content: content || "你好",
+      };
+    }
+  }
+
+  // ========================================
+  // Third Priority: Claude Code task command (/c or /task) - direct execution
   // ========================================
   const ccTaskMatch = trimmed.match(/^\/(c|task)\s+(.+)/s);
   if (ccTaskMatch) {
@@ -129,7 +201,7 @@ export function routeMessage(message: string): RouteResult {
   }
 
   // ========================================
-  // Second Priority: Explicit project command
+  // Third Priority: Explicit project command
   // ========================================
   const projectMatch = trimmed.match(/^\/(project|p)\s+(.+)/s);
   if (projectMatch) {
@@ -140,7 +212,25 @@ export function routeMessage(message: string): RouteResult {
   }
 
   // ========================================
-  // Second Priority: @Role direct call
+  // First Priority: /Role direct call (e.g., /产品, /测试)
+  // ========================================
+  const slashMatch = trimmed.match(/^\/(\S+)\s*(.*)$/s);
+  if (slashMatch) {
+    const alias = slashMatch[1].toLowerCase();
+    const content = slashMatch[2].trim();
+    const agentRole = AGENT_ALIASES[alias];
+
+    if (agentRole) {
+      return {
+        mode: "single_agent",
+        targetAgent: agentRole,
+        content: content || "你好",
+      };
+    }
+  }
+
+  // ========================================
+  // Fourth Priority: @Role direct call (for platforms that support @mention)
   // ========================================
   const agentMatch = trimmed.match(/^@(\S+)\s+(.+)/s);
   if (agentMatch) {
@@ -157,8 +247,9 @@ export function routeMessage(message: string): RouteResult {
   }
 
   // Also support Chinese natural language: "让前端写个xxx" / "叫后端实现xxx" / "前端写个组件"
+  // Require at least one delimiter after agent name to avoid false triggers (e.g., "测试一下" shouldn't trigger)
   const naturalMatch = trimmed.match(
-    /^(让|叫|请|@)?\s*(产品经理|产品|架构师|架构|前端|后端|运维|测试|pm|fe|be|ops|qa)[\s:：,，]*(.+)/i,
+    /^(让|叫|请|@)?\s*(产品经理|产品|架构师|架构|前端|后端|运维|测试|pm|fe|be|ops|qa)[\s:：,，]+(.+)/i,
   );
   if (naturalMatch) {
     const alias = naturalMatch[2].toLowerCase();
@@ -173,7 +264,7 @@ export function routeMessage(message: string): RouteResult {
   }
 
   // ========================================
-  // Third Priority: Keyword hint (suggests, doesn't auto-trigger)
+  // Fifth Priority: Keyword hint (suggests, doesn't auto-trigger)
   // ========================================
   if (PROJECT_HINTS.some((r) => r.test(trimmed))) {
     return {
@@ -214,4 +305,19 @@ export function getAgentDisplayName(role: string): string {
     devops: "运维工程师",
   };
   return names[role] ?? role;
+}
+
+// Get agent display tag (for message prefix)
+export function getAgentDisplayTag(role: string): string {
+  const tags: Record<string, string> = {
+    product_manager: "【产品】",
+    architect: "【架构】",
+    tester: "【测试】",
+    frontend: "【前端】",
+    backend: "【后端】",
+    devops: "【运维】",
+    project: "【项目】",
+    cc: "【CC】",
+  };
+  return tags[role] ?? role;
 }

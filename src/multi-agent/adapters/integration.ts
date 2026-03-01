@@ -3,12 +3,12 @@
 // Multi-Agent Integration with OpenClaw Gateway
 // This file bridges the multi-agent system with existing OpenClaw
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { MultiAgentSystem } from "../index.js";
 import { OpenClawClaudeCodeRunner } from "./claude-code.js";
-import { OpenClawLLMClient } from "./llm-client.js";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
+import { DirectLLMClient } from "./llm-client.js";
 
 // Type alias for the multi-agent system
 type MultiAgentSystemType = InstanceType<typeof MultiAgentSystem>;
@@ -26,12 +26,14 @@ export async function initializeMultiAgent(config?: {
   defaultProvider?: string;
   defaultModel?: string;
   openclawConfig?: any;
+  agentDir?: string;
 }): Promise<MultiAgentSystemType | null> {
   const workspaceDir =
-    config?.workspaceDir ?? process.env.OPENCLAW_WORKSPACE ?? path.join(os.homedir(), ".openclaw", "workspace");
+    config?.workspaceDir ??
+    process.env.OPENCLAW_WORKSPACE ??
+    path.join(os.homedir(), ".openclaw", "workspace");
   const dbPath =
-    config?.dbPath ??
-    path.join(os.homedir(), ".openclaw", "data", "multi-agent-events.db");
+    config?.dbPath ?? path.join(os.homedir(), ".openclaw", "data", "multi-agent-events.db");
 
   // Ensure db directory exists
   const dbDir = path.dirname(dbPath);
@@ -43,10 +45,11 @@ export async function initializeMultiAgent(config?: {
   const claudeRunner = new OpenClawClaudeCodeRunner();
 
   // Create LLM client
-  const llmClient = new OpenClawLLMClient({
+  const llmClient = new DirectLLMClient({
     defaultProvider: config?.defaultProvider,
     defaultModel: config?.defaultModel,
     config: config?.openclawConfig,
+    agentDir: config?.agentDir,
   });
 
   // Create multi-agent system

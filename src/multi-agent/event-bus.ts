@@ -135,9 +135,7 @@ export class EventBus {
 
   getProjectLog(projectId: string): AgentEvent[] {
     const rows = this.db
-      .prepare(
-        `SELECT * FROM events WHERE project_id = ? ORDER BY timestamp`,
-      )
+      .prepare(`SELECT * FROM events WHERE project_id = ? ORDER BY timestamp`)
       .all(projectId) as {
       event_id: string;
       timestamp: string;

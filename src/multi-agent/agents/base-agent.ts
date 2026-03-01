@@ -1,8 +1,8 @@
 // src/multi-agent/agents/base-agent.ts
 
 import type { EventBus, AgentEvent } from "../event-bus.js";
-import type { MessageRouter, RoutableMessage } from "../router.js";
 import type { PermissionManager } from "../permission.js";
+import type { MessageRouter, RoutableMessage } from "../router.js";
 
 export type AgentType = "orchestrator" | "lightweight" | "heavy";
 

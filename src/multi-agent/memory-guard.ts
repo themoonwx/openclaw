@@ -1,8 +1,8 @@
 // src/multi-agent/memory-guard.ts
 
 import os from "node:os";
-import type { SingleSlotScheduler } from "./scheduler.js";
 import type { EventBus } from "./event-bus.js";
+import type { SingleSlotScheduler } from "./scheduler.js";
 
 export class MemoryGuard {
   private criticalMb: number;
@@ -45,9 +45,7 @@ export class MemoryGuard {
       });
       await this.scheduler.killCurrent();
       this.scheduler.pause();
-      console.error(
-        `[MemoryGuard] CRITICAL: Only ${available}MB available, pausing scheduler`,
-      );
+      console.error(`[MemoryGuard] CRITICAL: Only ${available}MB available, pausing scheduler`);
     } else if (available < this.warningMb) {
       this.eventBus.publish({
         source: "memory_guard",
@@ -55,9 +53,7 @@ export class MemoryGuard {
         payload: { availableMb: available, threshold: this.warningMb },
       });
       this.scheduler.pause();
-      console.warn(
-        `[MemoryGuard] WARNING: Only ${available}MB available, scheduler paused`,
-      );
+      console.warn(`[MemoryGuard] WARNING: Only ${available}MB available, scheduler paused`);
     } else {
       this.scheduler.resume();
     }

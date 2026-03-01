@@ -3,15 +3,15 @@
 // Gateway Hook for Multi-Agent Integration
 // This hook intercepts messages and routes to multi-agent system if needed
 
-import type { FinalizedMsgContext } from "./auto-reply/templating.js";
-import type { OpenClawConfig } from "./config/config.js";
+import type { FinalizedMsgContext } from "../auto-reply/templating.js";
+import type { OpenClawConfig } from "../config/config.js";
 import {
   isMultiAgentRequest,
   runMultiAgentProject,
   initializeMultiAgent,
   getMultiAgentSystem,
   shutdownMultiAgent,
-} from "./multi-agent/adapters/integration.js";
+} from "./adapters/integration.js";
 
 export interface GatewayHookOptions {
   // Whether to enable multi-agent mode
@@ -67,7 +67,7 @@ export async function preprocessMessage(
 
 function extractMessageText(ctx: FinalizedMsgContext): string | null {
   // Try to extract message text from different possible fields
-  const text = ctx.Message ?? ctx.text ?? ctx.content ?? ctx.body;
+  const text = ctx.Body ?? ctx.BodyForAgent ?? ctx.RawBody ?? ctx.CommandBody;
   return typeof text === "string" ? text : null;
 }
 

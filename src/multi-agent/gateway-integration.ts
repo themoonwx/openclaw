@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import yaml from "yaml";
 import { OpenClawClaudeCodeRunner } from "./adapters/claude-code.js";
-import { OpenClawLLMClient } from "./adapters/llm-client.js";
+import { DirectLLMClient } from "./adapters/llm-client.js";
 import type { AgentPersona } from "./agents/base-agent.js";
 import type { LLMClient } from "./agents/lightweight.js";
 import { EventBus } from "./event-bus.js";
@@ -21,21 +21,27 @@ import { MessageRouter } from "./router.js";
 import { SingleSlotScheduler } from "./scheduler.js";
 import type { ClaudeCodeRunner } from "./scheduler.js";
 import { SingleAgentHandler } from "./single-agent-handler.js";
-import { routeMessage, getAgentDisplayName, type RouteResult } from "./trigger.js";
+import {
+  routeMessage,
+  getAgentDisplayName,
+  getAgentDisplayTag,
+  needsContext,
+  type RouteResult,
+} from "./trigger.js";
 
 // Default configuration
 const DEFAULT_CONFIG: MultiAgentConfig = {
   enabled: true,
+  defaultProvider: "minimax",
   scheduler: {
-    max_concurrent_claude_code: 1,
-    task_timeout_seconds: 300,
-    max_retry: 2,
-    poll_interval_seconds: 1,
+    maxRetry: 2,
+    taskTimeoutSeconds: 300,
+    pollIntervalSeconds: 1,
   },
-  memory_guard: {
-    critical_mb: 200,
-    warning_mb: 500,
-    check_interval_seconds: 3,
+  memoryGuard: {
+    criticalMb: 200,
+    warningMb: 500,
+    checkIntervalSeconds: 3,
   },
   human_checkpoints: {
     after_requirement: true,
@@ -78,12 +84,16 @@ class MultiAgentSystem {
     this.eventBus = new EventBus(this.dbPath);
     this.permission = new PermissionManager(this.workspaceDir);
     this.router = new MessageRouter(this.eventBus);
-    this.scheduler = new SingleSlotScheduler(
-      this.eventBus,
-      this.claudeRunner,
-      this.config.scheduler,
-    );
-    this.memoryGuard = new MemoryGuard(this.scheduler, this.eventBus, this.config.memory_guard);
+    this.scheduler = new SingleSlotScheduler(this.eventBus, this.claudeRunner, {
+      maxRetry: this.config.scheduler.maxRetry,
+      taskTimeoutSeconds: this.config.scheduler.taskTimeoutSeconds,
+      pollIntervalSeconds: this.config.scheduler.pollIntervalSeconds,
+    });
+    this.memoryGuard = new MemoryGuard(this.scheduler, this.eventBus, {
+      criticalMb: this.config.memoryGuard.criticalMb,
+      warningMb: this.config.memoryGuard.warningMb,
+      checkIntervalSeconds: this.config.memoryGuard.checkIntervalSeconds,
+    });
   }
 
   private loadConfig(configPath?: string): MultiAgentConfig {
@@ -153,8 +163,8 @@ class MultiAgentSystem {
         if (persona.role) {
           personas.set(persona.role, persona);
         }
-      } catch {
-        console.warn(`Failed to load persona ${file}:`, e);
+      } catch (err) {
+        console.warn(`Failed to load persona ${file}:`, err);
       }
     }
     return personas;
@@ -197,9 +207,26 @@ export async function initializeMultiAgentGateway(config?: {
   }
 
   const claudeRunner = new OpenClawClaudeCodeRunner();
-  const llmClient = new OpenClawLLMClient({
-    defaultProvider: config?.defaultProvider,
+
+  // Use OpenClaw config (passed from boot hook) or load from multi-agent.yaml
+  let openclawConfig: any = config?.openclawConfig ?? {};
+  const configPath = config?.configPath;
+  if (!openclawConfig && configPath) {
+    try {
+      const yaml = await import("yaml");
+      const fs = await import("node:fs/promises");
+      const content = await fs.readFile(configPath, "utf-8");
+      openclawConfig = yaml.parse(content) || {};
+    } catch (e) {
+      console.warn("Failed to load config for LLM client:", e);
+    }
+  }
+
+  const llmClient = new DirectLLMClient({
+    defaultProvider: config?.defaultProvider || "minimax",
     defaultModel: config?.defaultModel,
+    config: openclawConfig,
+    agentDir: path.join(process.env.HOME ?? "", ".openclaw", "agents", "main", "agent"),
   });
 
   multiAgentSystem = new MultiAgentSystem(
@@ -210,8 +237,9 @@ export async function initializeMultiAgentGateway(config?: {
     config?.configPath,
   );
 
-  // Try multiple possible paths for personas
+  // Load personas directory - default to ~/.openclaw/agents/personas
   const possiblePaths = [
+    path.join(process.env.HOME ?? "", ".openclaw", "agents", "personas"),
     path.join(process.cwd(), "config", "personas"),
     path.join(process.cwd(), "..", "config", "personas"),
     "/home/ubuntu/openclaw/config/personas",
@@ -719,19 +747,79 @@ export async function processMessageWithTrigger(
       return {
         shouldHandle: false,
         result: route,
-        response: result,
+        response: `【项目】\n\n${result}`,
       };
     }
 
     case "single_agent": {
       // Single role call
-      if (replyFn) {
-        const displayName = getAgentDisplayName(route.targetAgent!);
-        replyFn(`🤖 正在召唤 ${displayName}...`);
+      console.log("[DEBUG] Entering single_agent case, route:", JSON.stringify(route).substring(0, 100));
+      const displayName = getAgentDisplayName(route.targetAgent!);
+      const displayTag = getAgentDisplayTag(route.targetAgent!);
+
+      // Check if this request needs context from main agent
+      const needsMainContext = needsContext(route.content);
+
+      // Get session directory - find the most recent main session
+      let contextInfo = "";
+      if (needsMainContext) {
+        console.log(`[Trigger] ${route.targetAgent} request needs context from main agent`);
+
+        // Try to get main session history
+        try {
+          const mainSessionPath = path.join(
+            process.env.OPENCLAW_AGENTS_DIR || "/home/ubuntu/.openclaw/agents/main/sessions",
+          );
+
+          // Find the most recent session file
+          const files = fs.readdirSync(mainSessionPath)
+            .filter(f => f.endsWith('.jsonl'))
+            .filter(f => !f.includes('.deleted.'))
+            .sort((a, b) => {
+              const statA = fs.statSync(path.join(mainSessionPath, a));
+              const statB = fs.statSync(path.join(mainSessionPath, b));
+              return statB.mtime.getTime() - statA.mtime.getTime();
+            });
+
+          if (files.length > 0) {
+            const latestSession = path.join(mainSessionPath, files[0]);
+            const lines = fs.readFileSync(latestSession, 'utf-8').split('\n').filter(Boolean);
+
+            // Get last 10 lines that contain user messages
+            const recentMessages: string[] = [];
+            for (let i = lines.length - 1; i >= 0 && recentMessages.length < 5; i--) {
+              try {
+                const entry = JSON.parse(lines[i]);
+                if (entry.type === 'message' && entry.message?.role === 'user') {
+                  const text = entry.message?.content?.[0]?.text || '';
+                  // Extract just the user's message content
+                  const userMsg = text.replace(/System:.*?DM from.*?: /, '').substring(0, 500);
+                  recentMessages.unshift(userMsg);
+                }
+              } catch {}
+            }
+
+            if (recentMessages.length > 0) {
+              contextInfo = `\n\n【主对话上下文】\n${recentMessages.join('\n')}\n\n【以上是主对话历史，请基于此继续任务】\n\n`;
+              console.log(`[Trigger] Got ${recentMessages.length} context messages from main session`);
+            }
+          }
+        } catch (err) {
+          console.error("[Trigger] Failed to get main session context:", err);
+        }
       }
 
+      console.log("[DEBUG] About to get handler for:", route.targetAgent);
       const handler = getSingleAgentHandler();
+      console.log("[DEBUG] Handler instance:", !!handler, "targetAgent:", route.targetAgent);
       if (!handler) {
+        console.log("[DEBUG] No handler found, checking multiAgentSystem");
+        console.log("[DEBUG] multiAgentSystem exists:", !!multiAgentSystem);
+        if (multiAgentSystem) {
+          const orch = multiAgentSystem.getOrchestrator();
+          console.log("[DEBUG] orchestrator exists:", !!orch);
+        }
+        console.log("[Trigger] WARNING: No handler found for single_agent");
         return {
           shouldHandle: true,
           result: route,
@@ -739,12 +827,25 @@ export async function processMessageWithTrigger(
         };
       }
 
-      const response = await handler.handle(route.targetAgent!, route.content);
-      return {
-        shouldHandle: false,
-        result: route,
-        response,
-      };
+      console.log("[DEBUG] About to call handler.handle, content length:", (contextInfo + route.content).length);
+      try {
+        const response = await handler.handle(route.targetAgent!, contextInfo + route.content);
+        console.log("[DEBUG] handler.handle returned, response length:", response?.length);
+        console.log("[Trigger] Handler response received, length:", response?.length);
+        return {
+          shouldHandle: false,
+          result: route,
+          response: `${displayTag}\n\n${response}`,
+        };
+      } catch (err) {
+        console.error("[Trigger] Handler error:", err);
+        console.error("[Trigger] Error stack:", err instanceof Error ? err.stack : "");
+        return {
+          shouldHandle: true,
+          result: route,
+          response: undefined,
+        };
+      }
     }
 
     case "cc_task": {
@@ -758,7 +859,7 @@ export async function processMessageWithTrigger(
       return {
         shouldHandle: false,
         result: route,
-        response: `任务 #${taskId} 已加入队列`,
+        response: `【CC】\n\n任务 #${taskId} 已加入队列`,
       };
     }
 
@@ -776,7 +877,7 @@ export async function processMessageWithTrigger(
       return {
         shouldHandle: false,
         result: route,
-        response: `任务 #${taskId} 已加入队列（含对话上下文）`,
+        response: `【CC】\n\n任务 #${taskId} 已加入队列（含对话上下文）`,
       };
     }
 
@@ -804,11 +905,13 @@ let singleAgentHandler: SingleAgentHandler | null = null;
 
 function getSingleAgentHandler(): SingleAgentHandler | null {
   if (!multiAgentSystem) {
+    console.log("[SingleAgent] No multi-agent system");
     return null;
   }
 
   const orchestrator = multiAgentSystem.getOrchestrator();
   if (!orchestrator) {
+    console.log("[SingleAgent] No orchestrator");
     return null;
   }
 
@@ -821,12 +924,17 @@ function getSingleAgentHandler(): SingleAgentHandler | null {
       agents.set(role, agent);
     }
   }
+  console.log("[SingleAgent] Agents loaded:", [...agents.keys()]);
 
   // Get event bus and scheduler from multi-agent system
   const eventBus = (multiAgentSystem as unknown as { eventBus: EventBus }).eventBus;
   const scheduler = (multiAgentSystem as unknown as { scheduler: SingleSlotScheduler }).scheduler;
 
   if (!eventBus || !scheduler) {
+    console.log("[SingleAgent] Missing eventBus or scheduler:", {
+      eventBus: !!eventBus,
+      scheduler: !!scheduler,
+    });
     return null;
   }
 

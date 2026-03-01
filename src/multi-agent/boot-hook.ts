@@ -3,28 +3,27 @@
 // Multi-Agent Boot Hook
 // Initializes the multi-agent system on Gateway startup
 
-import { initMultiAgentGateway, cleanupMultiAgentGateway } from "./adapters/integration.js";
+import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
-import type { Dependencies } from "../hooks/internal-hooks.js";
+import { initializeMultiAgent, shutdownMultiAgent } from "./adapters/integration.js";
 
 /**
  * Initialize multi-agent system on gateway startup
  */
 export async function initMultiAgentOnStartup(
   cfg: OpenClawConfig,
-  deps: Dependencies,
+  _deps: unknown,
   workspaceDir: string,
 ): Promise<void> {
   try {
     console.log("[MultiAgent] Initializing...");
 
-    await initMultiAgentGateway({
+    await initializeMultiAgent({
       workspaceDir,
       configPath: "./config/multi-agent.yaml",
-      defaultProvider: cfg.models?.providers
-        ? Object.keys(cfg.models.providers)[0]
-        : "minimax",
+      defaultProvider: cfg.models?.providers ? Object.keys(cfg.models.providers)[0] : "minimax",
       defaultModel: "MiniMax-M2.5",
+      agentDir: path.join(process.env.HOME ?? "", ".openclaw", "agents", "main", "agent"),
       openclawConfig: cfg,
     });
 
@@ -40,7 +39,7 @@ export async function initMultiAgentOnStartup(
  */
 export async function cleanupMultiAgentOnShutdown(): Promise<void> {
   try {
-    await cleanupMultiAgentGateway();
+    await shutdownMultiAgent();
     console.log("[MultiAgent] Cleaned up");
   } catch (err) {
     console.error("[MultiAgent] Cleanup error:", err);

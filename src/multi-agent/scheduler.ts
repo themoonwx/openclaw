@@ -29,11 +29,7 @@ const PRIORITY_MAP: Record<string, number> = {
 
 // Claude Code runner interface - to be implemented
 export interface ClaudeCodeRunner {
-  run(params: {
-    prompt: string;
-    workingDir: string;
-    timeoutMs: number;
-  }): Promise<{
+  run(params: { prompt: string; workingDir: string; timeoutMs: number }): Promise<{
     exitCode: number;
     stdout: string;
     stderr: string;
@@ -220,8 +216,6 @@ export class SingleSlotScheduler {
   }
 
   private timeout(ms: number): Promise<never> {
-    return new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Task timed out")), ms),
-    );
+    return new Promise((_, reject) => setTimeout(() => reject(new Error("Task timed out")), ms));
   }
 }

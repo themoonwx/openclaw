@@ -1,26 +1,28 @@
 // src/multi-agent/orchestrator.ts
 
-import type { EventBus, AgentEvent } from "./event-bus.js";
-import type { MessageRouter } from "./router.js";
-import type { PermissionManager } from "./permission.js";
-import type { SingleSlotScheduler } from "./scheduler.js";
 import type { BaseAgent, AgentPersona, AgentTask } from "./agents/base-agent.js";
-import { ProductManagerAgent, ArchitectAgent, TesterAgent } from "./agents/lightweight.js";
 import { FrontendAgent, BackendAgent, DevopsAgent } from "./agents/heavy.js";
+import { ProductManagerAgent, ArchitectAgent, TesterAgent } from "./agents/lightweight.js";
 import type { LLMClient } from "./agents/lightweight.js";
+import type { EventBus, AgentEvent } from "./event-bus.js";
+import type { PermissionManager } from "./permission.js";
+import type { MessageRouter } from "./router.js";
+import type { SingleSlotScheduler } from "./scheduler.js";
 
 export interface MultiAgentConfig {
   enabled: boolean;
+  defaultProvider?: string;
+  defaultModel?: string;
   scheduler: {
-    max_concurrent_claude_code: number;
-    task_timeout_seconds: number;
-    max_retry: number;
-    poll_interval_seconds: number;
+    maxRetry: number;
+    taskTimeoutSeconds: number;
+    max_retry?: number;
+    pollIntervalSeconds: number;
   };
-  memory_guard: {
-    critical_mb: number;
-    warning_mb: number;
-    check_interval_seconds: number;
+  memoryGuard: {
+    criticalMb: number;
+    warningMb: number;
+    checkIntervalSeconds: number;
   };
   human_checkpoints: {
     after_requirement: boolean;
@@ -81,14 +83,7 @@ export class Orchestrator {
     if (frontendPersona) {
       this.agents.set(
         "frontend",
-        new FrontendAgent(
-          frontendPersona,
-          eventBus,
-          router,
-          permission,
-          scheduler,
-          llmClient,
-        ),
+        new FrontendAgent(frontendPersona, eventBus, router, permission, scheduler, llmClient),
       );
     }
 
@@ -96,14 +91,7 @@ export class Orchestrator {
     if (backendPersona) {
       this.agents.set(
         "backend",
-        new BackendAgent(
-          backendPersona,
-          eventBus,
-          router,
-          permission,
-          scheduler,
-          llmClient,
-        ),
+        new BackendAgent(backendPersona, eventBus, router, permission, scheduler, llmClient),
       );
     }
 
@@ -111,14 +99,7 @@ export class Orchestrator {
     if (devopsPersona) {
       this.agents.set(
         "devops",
-        new DevopsAgent(
-          devopsPersona,
-          eventBus,
-          router,
-          permission,
-          scheduler,
-          llmClient,
-        ),
+        new DevopsAgent(devopsPersona, eventBus, router, permission, scheduler, llmClient),
       );
     }
   }
@@ -226,10 +207,29 @@ export class Orchestrator {
 
     await this.agents.get("devops")?.handleTask(deployTask);
 
+    // Build comprehensive result from all phases
+    const phases = [
+      { name: "需求分析 (PRD)", content: prdResult?.output || "" },
+      { name: "架构设计", content: archResult?.output || "" },
+      { name: "测试报告", content: testResult?.output || "" },
+    ];
+
     // Generate project log
     const log = this.eventBus.getProjectLog(projectId);
 
-    return `Project completed. Events: ${log.length}`;
+    // Format output
+    let result = `# 项目完成报告\n\n`;
+    result += `**项目ID**: ${projectId}\n`;
+    result += `**任务ID**: ${taskId}\n`;
+    result += `**总事件数**: ${log.length}\n\n`;
+
+    for (const phase of phases) {
+      if (phase.content) {
+        result += `## ${phase.name}\n\n${phase.content}\n\n`;
+      }
+    }
+
+    return result;
   }
 
   private async waitForCodingComplete(projectId: string) {

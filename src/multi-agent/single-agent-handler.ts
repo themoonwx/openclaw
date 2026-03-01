@@ -2,9 +2,9 @@
 
 // Single agent handler for direct role calls
 
+import type { BaseAgent, AgentTask } from "./agents/base-agent.js";
 import type { EventBus } from "./event-bus.js";
 import type { SingleSlotScheduler } from "./scheduler.js";
-import type { BaseAgent, AgentTask } from "./agents/base-agent.js";
 import { AGENT_TYPES } from "./trigger.js";
 
 export class SingleAgentHandler {
@@ -27,11 +27,15 @@ export class SingleAgentHandler {
       prompt: userMessage,
     };
 
+    console.log("[SingleAgentHandler] agentType:", agentType, "agent:", !!agent);
+
     if (agentType === "lightweight") {
       // Lightweight Agent: Direct LLM API call
       // Product Manager / Architect / Tester
       try {
+        console.log("[SingleAgentHandler] Calling handleTask for lightweight agent");
         const result = await agent.handleTask(task);
+        console.log("[SingleAgentHandler] handleTask result:", result);
         return result.output;
       } catch (err) {
         return `❌ ${targetAgent} 执行失败: ${err instanceof Error ? err.message : String(err)}`;

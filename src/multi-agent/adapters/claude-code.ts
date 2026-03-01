@@ -1,8 +1,8 @@
 // src/multi-agent/adapters/claude-code.ts
 
-import type { ClaudeCodeRunner } from "./scheduler.js";
-import { runClaudeCliAgent } from "../../agents/cli-runner.js";
 import { randomUUID } from "node:crypto";
+import { runClaudeCliAgent } from "../../agents/cli-runner.js";
+import type { ClaudeCodeRunner } from "../scheduler.js";
 
 /**
  * Claude Code Runner implementation
@@ -29,9 +29,9 @@ export class OpenClawClaudeCodeRunner implements ClaudeCodeRunner {
       });
 
       return {
-        exitCode: result.error ? 1 : 0,
-        stdout: result.message ?? "",
-        stderr: result.error ?? "",
+        exitCode: result.meta.error ? 1 : 0,
+        stdout: result.payloads?.[0]?.text ?? "",
+        stderr: result.meta.error?.message ?? "",
       };
     } catch (err) {
       return {

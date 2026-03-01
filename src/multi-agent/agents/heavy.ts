@@ -1,8 +1,11 @@
 // src/multi-agent/agents/heavy.ts
 
+import type { EventBus } from "../event-bus.js";
+import type { PermissionManager } from "../permission.js";
+import type { MessageRouter } from "../router.js";
+import type { SingleSlotScheduler, CodingTask } from "../scheduler.js";
 import type { AgentPersona, AgentTask } from "./base-agent.js";
 import { BaseAgent } from "./base-agent.js";
-import type { SingleSlotScheduler, CodingTask } from "../scheduler.js";
 
 // LLM Client interface
 export interface LLMClient {
@@ -75,9 +78,9 @@ export class FrontendAgent extends HeavyAgent {
 
   constructor(
     persona: AgentPersona,
-    eventBus: ReturnType<typeof import("../event-bus.js")>["EventBus"],
-    router: ReturnType<typeof import("../router.js")>["MessageRouter"],
-    permission: ReturnType<typeof import("../permission.js")>["PermissionManager"],
+    eventBus: EventBus,
+    router: MessageRouter,
+    permission: PermissionManager,
     scheduler: SingleSlotScheduler,
     llmClient: LLMClient,
   ) {
@@ -93,9 +96,9 @@ export class BackendAgent extends HeavyAgent {
 
   constructor(
     persona: AgentPersona,
-    eventBus: ReturnType<typeof import("../event-bus.js")>["EventBus"],
-    router: ReturnType<typeof import("../router.js")>["MessageRouter"],
-    permission: ReturnType<typeof import("../permission.js")>["PermissionManager"],
+    eventBus: EventBus,
+    router: MessageRouter,
+    permission: PermissionManager,
     scheduler: SingleSlotScheduler,
     llmClient: LLMClient,
   ) {
@@ -111,9 +114,9 @@ export class DevopsAgent extends HeavyAgent {
 
   constructor(
     persona: AgentPersona,
-    eventBus: ReturnType<typeof import("../event-bus.js")>["EventBus"],
-    router: ReturnType<typeof import("../router.js")>["MessageRouter"],
-    permission: ReturnType<typeof import("../permission.js")>["PermissionManager"],
+    eventBus: EventBus,
+    router: MessageRouter,
+    permission: PermissionManager,
     scheduler: SingleSlotScheduler,
     llmClient: LLMClient,
   ) {

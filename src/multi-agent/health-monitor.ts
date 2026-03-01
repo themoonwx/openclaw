@@ -4,8 +4,8 @@
 // Runs health check after startup and triggers auto-fix if needed
 
 import { spawn } from "node:child_process";
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 
 const HEALTH_CHECK_SCRIPT = "/home/ubuntu/openclaw/scripts/health-check.sh";
 const AUTO_FIX_SCRIPT = "/home/ubuntu/openclaw/scripts/auto-fix.sh";
@@ -154,13 +154,10 @@ export class HealthMonitor {
     }
 
     // Three consecutive failures - trigger CC
-    console.log(
-      "[HealthMonitor] Three consecutive failures! CC repair should be triggered.",
-    );
+    console.log("[HealthMonitor] Three consecutive failures! CC repair should be triggered.");
     return {
       action: "trigger_cc",
-      message:
-        "三次启动失败，已达到触发 Claude Code 修复的条件\n请通过 /p 或 @角色 触发修复任务",
+      message: "三次启动失败，已达到触发 Claude Code 修复的条件\n请通过 /p 或 @角色 触发修复任务",
     };
   }
 

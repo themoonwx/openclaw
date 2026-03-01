@@ -5,6 +5,7 @@ import {
   setNotifyUserFunction,
   getCCTaskQueueStatus,
   getCurrentTaskProgress,
+  processMessageWithTrigger,
 } from "../multi-agent/gateway-integration.js";
 import { routeMessage } from "../multi-agent/trigger.js";
 import type { DispatchFromConfigResult } from "./reply/dispatch-from-config.js";
@@ -64,22 +65,28 @@ export async function dispatchInboundMessage(params: {
   );
 
   if (multiAgentSystem && multiAgentSystem.isEnabled()) {
+    // Extract actual message content from envelope format (e.g., "[Discord user#1234] message")
+    const envelopeMatch = messageBody.match(/^\[.+?\]\s*(.+)$/s);
+    const triggerContent = envelopeMatch ? envelopeMatch[1].trim() : messageBody;
+
     // Use three-layer trigger to determine message routing
-    const route = routeMessage(messageBody);
-    console.log("[Trigger] Route result:", route.mode, "content:", messageBody.substring(0, 30));
+    const route = routeMessage(triggerContent);
+    console.log("[Trigger] Route result:", route.mode, "content:", triggerContent.substring(0, 30));
 
     if (route.mode === "multi_agent") {
       // Full multi-agent project flow
       console.log("[Trigger] Routing to multi-agent mode:", route.content.substring(0, 50));
       try {
         const result = await runMultiAgentProject(route.content);
-        // Send the result back to the user
-        await params.dispatcher.send(result);
+        // Send the result back to the user with project tag
+        await params.dispatcher.send(`【项目】\n\n${result}`);
         return {
           ok: true,
           final: result,
           toolResults: [],
           agentErrors: [],
+          queuedFinal: true,
+          counts: { tool: 0, block: 0, final: 1 },
         };
       } catch (err) {
         console.error("[Trigger] Multi-agent error:", err);
@@ -89,12 +96,35 @@ export async function dispatchInboundMessage(params: {
           final: "多 Agent 执行失败",
           toolResults: [],
           agentErrors: [String(err)],
+          queuedFinal: true,
+          counts: { tool: 0, block: 0, final: 1 },
         };
       }
     } else if (route.mode === "single_agent") {
-      // Single agent mode - handled separately
+      // Single agent mode - use processMessageWithTrigger
       console.log("[Trigger] Single agent mode:", route.targetAgent);
-      // For now, fall through to normal flow (single agent handling needs more integration)
+      // Pass original triggerContent to preserve agent info, not route.content
+      const result = await processMessageWithTrigger(
+        triggerContent,
+        // 不再使用回调发送中间状态，避免标签丢失
+        undefined,
+      );
+      console.log("[Trigger] Dispatch received result:", JSON.stringify(result).substring(0, 100));
+      if (result.response) {
+        console.log("[Trigger] Sending single_agent response with tag:", result.response.substring(0, 50));
+        await params.dispatcher.send(result.response);
+      } else {
+        console.log("[Trigger] WARNING: single_agent returned no response!");
+        console.log("[Trigger] Result keys:", Object.keys(result));
+      }
+      return {
+        ok: true,
+        final: result.response ?? "Single agent task completed",
+        toolResults: [],
+        agentErrors: [],
+        queuedFinal: true,
+        counts: { tool: 0, block: 0, final: 1 },
+      };
     } else if (route.mode === "cc_task") {
       // Claude Code task queue mode
       console.log("[Trigger] CC task mode:", route.content.substring(0, 50));
@@ -104,7 +134,7 @@ export async function dispatchInboundMessage(params: {
 
       // Notify user that task is queued
       await params.dispatcher.send(
-        `📋 任务已加入 CC 队列\n\n当前队列: ${queueStatus.pending} 个待处理, ${queueStatus.running} 个执行中`,
+        `【CC】\n\n📋 任务已加入 CC 队列\n\n当前队列: ${queueStatus.pending} 个待处理, ${queueStatus.running} 个执行中`,
       );
 
       return {
@@ -112,6 +142,8 @@ export async function dispatchInboundMessage(params: {
         final: "任务已加入队列",
         toolResults: [],
         agentErrors: [],
+        queuedFinal: true,
+        counts: { tool: 0, block: 0, final: 1 },
       };
     } else if (route.mode === "cc_progress") {
       // Query CC task progress
@@ -122,11 +154,11 @@ export async function dispatchInboundMessage(params: {
 
       if (!progress || queueStatus.running === 0) {
         await params.dispatcher.send(
-          `📊 CC 任务状态\n\n队列: ${queueStatus.pending} 待处理, ${queueStatus.running} 执行中, ${queueStatus.completed} 已完成\n\n当前无任务在执行`,
+          `【CC】\n\n📊 CC 任务状态\n\n队列: ${queueStatus.pending} 待处理, ${queueStatus.running} 执行中, ${queueStatus.completed} 已完成\n\n当前无任务在执行`,
         );
       } else {
         await params.dispatcher.send(
-          `📊 **任务 #${progress.taskId} 进度**\n\n状态: ${progress.status}\n\n---\n${progress.output.slice(-2000)}`,
+          `【CC】\n\n📊 **任务 #${progress.taskId} 进度**\n\n状态: ${progress.status}\n\n---\n${progress.output.slice(-2000)}`,
         );
       }
 
@@ -135,6 +167,8 @@ export async function dispatchInboundMessage(params: {
         final: "已返回进度",
         toolResults: [],
         agentErrors: [],
+        queuedFinal: true,
+        counts: { tool: 0, block: 0, final: 1 },
       };
     }
     // For suggest_project and single_llm modes, continue with normal flow
