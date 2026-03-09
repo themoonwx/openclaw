@@ -69,6 +69,10 @@ async function sendOutboundText(params: {
   const account = resolveFeishuAccount({ cfg, accountId });
   const renderMode = account.config?.renderMode ?? "auto";
 
+  console.log(
+    `[OUTBOUND] sendOutboundText: useCard=${renderMode === "card" || (renderMode === "auto" && shouldUseCard(text))}, text_len=${text?.length}`,
+  );
+
   if (renderMode === "card" || (renderMode === "auto" && shouldUseCard(text))) {
     return sendMarkdownCardFeishu({ cfg, to, text, accountId, replyToMessageId });
   }

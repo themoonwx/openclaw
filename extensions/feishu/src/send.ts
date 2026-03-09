@@ -1,3 +1,5 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { ClawdbotConfig } from "openclaw/plugin-sdk/feishu";
 import { resolveFeishuAccount } from "./accounts.js";
 import { createFeishuClient } from "./client.js";
@@ -10,6 +12,85 @@ import { resolveFeishuSendTarget } from "./send-target.js";
 import type { FeishuSendResult } from "./types.js";
 
 const WITHDRAWN_REPLY_ERROR_CODES = new Set([230011, 231003]);
+
+// 消息追踪配置
+const TRACKER_FILE = "/home/ubuntu/.openclaw/message_tracker.json";
+
+/**
+ * 记录发送的消息到 tracker 文件
+ */
+async function trackSentMessage(messageId: string, chatId: string, text: string): Promise<void> {
+  console.log(
+    `[TRACKER] trackSentMessage called: messageId=${messageId?.slice(-8)}, chatId=${chatId?.slice(-8)}, text_len=${text?.length}`,
+  );
+  try {
+    const now = Date.now();
+    const messageData = {
+      id: messageId,
+      messageId: messageId,
+      text: text?.slice(0, 500) || "", // 截断过长内容
+      receiveId: chatId,
+      sentTime: now,
+      timestamp: now,
+      chatId: chatId,
+      reminderSent: null,
+    };
+
+    // 读取现有 tracker
+    let tracker: { messages: Record<string, unknown> } = { messages: {} };
+    try {
+      const content = await fs.readFile(TRACKER_FILE, "utf8");
+      tracker = JSON.parse(content);
+    } catch {
+      // 文件不存在，创建新的
+    }
+
+    // 添加新消息
+    tracker.messages[messageId] = messageData;
+
+    // 写回文件
+    await fs.writeFile(TRACKER_FILE, JSON.stringify(tracker, null, 2), "utf8");
+    console.log(`[feishu-reminder] Tracked message: ${messageId.slice(-8)}`);
+  } catch (err) {
+    console.error(`[feishu-reminder] Failed to track message:`, err);
+  }
+}
+
+/**
+ * 从飞书 post 消息内容中提取纯文本
+ */
+function extractTextFromPostContent(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  let text = "";
+  for (const item of content) {
+    if (item?.tag === "text") {
+      text += item.text || "";
+    } else if (item?.tag === "at") {
+      text += item.name ? `@${item.name} ` : "";
+    } else if (item?.tag === "a") {
+      text += item.text || "";
+    }
+  }
+  return text;
+}
+
+/**
+ * 从飞书卡片中提取文本
+ */
+function extractTextFromCard(card: Record<string, unknown>): string {
+  let text = "";
+  const elements = (card.elements || []) as Array<Record<string, unknown>>;
+  for (const el of elements) {
+    if (el.tag === "markdown") {
+      text += (el.content as string) || "";
+    } else if (el.tag === "div") {
+      text += (el.text as string) || "";
+    } else if (el.tag === "text") {
+      text += (el.content as string) || "";
+    }
+  }
+  return text;
+}
 
 function shouldFallbackFromReplyTarget(response: { code?: number; msg?: string }): boolean {
   if (response.code !== undefined && WITHDRAWN_REPLY_ERROR_CODES.has(response.code)) {
@@ -71,7 +152,21 @@ async function sendFallbackDirect(
     },
   });
   assertFeishuMessageApiSuccess(response, errorPrefix);
-  return toFeishuSendResult(response, params.receiveId);
+  const result = toFeishuSendResult(response, params.receiveId);
+
+  // 追踪发送的消息
+  let text = "";
+  try {
+    const contentObj = JSON.parse(params.content);
+    if (contentObj?.post?.zh_cn?.content) {
+      text = extractTextFromPostContent(contentObj.post.zh_cn.content);
+    } else if (contentObj?.text) {
+      text = contentObj.text;
+    }
+  } catch {}
+  await trackSentMessage(result.messageId, result.chatId, text);
+
+  return result;
 }
 
 export type FeishuMessageInfo = {
@@ -317,7 +412,9 @@ export async function sendMessageFeishu(
       return sendFallbackDirect(client, directParams, "Feishu send failed");
     }
     assertFeishuMessageApiSuccess(response, "Feishu reply failed");
-    return toFeishuSendResult(response, receiveId);
+    const result = toFeishuSendResult(response, receiveId);
+    await trackSentMessage(result.messageId, result.chatId, messageText);
+    return result;
   }
 
   return sendFallbackDirect(client, directParams, "Feishu send failed");
@@ -361,7 +458,15 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
       return sendFallbackDirect(client, directParams, "Feishu card send failed");
     }
     assertFeishuMessageApiSuccess(response, "Feishu card reply failed");
-    return toFeishuSendResult(response, receiveId);
+    const result = toFeishuSendResult(response, receiveId);
+    // 从卡片中提取文本
+    let cardText = "";
+    try {
+      const cardObj = JSON.parse(content);
+      cardText = extractTextFromCard(cardObj) || "卡片消息";
+    } catch {}
+    await trackSentMessage(result.messageId, result.chatId, cardText);
+    return result;
   }
 
   return sendFallbackDirect(client, directParams, "Feishu card send failed");

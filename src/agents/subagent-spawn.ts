@@ -3,6 +3,11 @@ import { promises as fs } from "node:fs";
 import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinking.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
+import {
+  loadSessionStore,
+  resolveAgentIdFromSessionKey,
+  resolveStorePath,
+} from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import {
@@ -226,7 +231,7 @@ async function ensureThreadBindingForSubagentSpawn(params: {
       };
     }
     return { status: "ok" };
-  } catch (err) {
+  } catch {
     return {
       status: "error",
       error: `Thread bind failed: ${summarizeError(err)}`,
@@ -273,11 +278,37 @@ export async function spawnSubagentDirect(
         ? params.cleanup
         : "keep";
   const expectsCompletionMessage = params.expectsCompletionMessage !== false;
+
+  // If agentChannel is not provided, try to get it from the session's deliveryContext
+  let effectiveAgentChannel = ctx.agentChannel;
+  let effectiveAgentAccountId = ctx.agentAccountId;
+  let effectiveAgentTo = ctx.agentTo;
+  let effectiveAgentThreadId = ctx.agentThreadId;
+
+  // Try to get channel info from session if not provided in ctx
+  if ((!effectiveAgentChannel || effectiveAgentChannel === "webchat") && ctx.agentSessionKey) {
+    try {
+      const cfg = loadConfig();
+      const agentId = resolveAgentIdFromSessionKey(ctx.agentSessionKey);
+      const storePath = resolveStorePath(cfg.session?.store, { agentId });
+      const store = loadSessionStore(storePath);
+      const entry = store[ctx.agentSessionKey];
+      if (entry?.deliveryContext?.channel && entry.deliveryContext.channel !== "webchat") {
+        effectiveAgentChannel = entry.deliveryContext.channel;
+        effectiveAgentAccountId = effectiveAgentAccountId ?? entry.deliveryContext.accountId;
+        effectiveAgentTo = effectiveAgentTo ?? entry.deliveryContext.to;
+        effectiveAgentThreadId = effectiveAgentThreadId ?? entry.deliveryContext.threadId;
+      }
+    } catch {
+      // Ignore errors, fallback to ctx values
+    }
+  }
+
   const requesterOrigin = normalizeDeliveryContext({
-    channel: ctx.agentChannel,
-    accountId: ctx.agentAccountId,
-    to: ctx.agentTo,
-    threadId: ctx.agentThreadId,
+    channel: effectiveAgentChannel,
+    accountId: effectiveAgentAccountId,
+    to: effectiveAgentTo,
+    threadId: effectiveAgentThreadId,
   });
   const hookRunner = getGlobalHookRunner();
   const cfg = loadConfig();
@@ -409,7 +440,7 @@ export async function spawnSubagentDirect(
         timeoutMs: 10_000,
       });
       return undefined;
-    } catch (err) {
+    } catch {
       return err instanceof Error ? err.message : typeof err === "string" ? err : "error";
     }
   };
@@ -579,7 +610,7 @@ export async function spawnSubagentDirect(
     if (typeof response?.runId === "string" && response.runId) {
       childRunId = response.runId;
     }
-  } catch (err) {
+  } catch {
     if (attachmentAbsDir) {
       try {
         await fs.rm(attachmentAbsDir, { recursive: true, force: true });
@@ -658,7 +689,7 @@ export async function spawnSubagentDirect(
       attachmentsRootDir: attachmentRootDir,
       retainAttachmentsOnKeep: retainOnSessionKeep,
     });
-  } catch (err) {
+  } catch {
     if (attachmentAbsDir) {
       try {
         await fs.rm(attachmentAbsDir, { recursive: true, force: true });
