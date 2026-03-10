@@ -1,0 +1,53 @@
+# OpenClaw Git Ignore
+# 运行时生成的文件 - 不需要版本控制
+
+# 日志和临时文件
+*.log
+*.jsonl
+*.tmp
+*.bak*
+*.backup*
+
+# 数据和数据库
+memory/
+data/
+delivery-queue/
+cron/
+
+# 凭证和密钥
+credentials/
+identity/
+exec-approvals.json
+
+# 会话和状态
+agents/*/sessions/
+message_tracker.json
+update-check.json
+
+# 构建产物
+node_modules/
+extensions/*/node_modules/
+extensions/data.db
+
+# 工作空间（按需可保留）
+workspace-*/
+workspace/
+
+# 媒体文件
+media/
+browser/
+canvas/
+
+# 系统文件
+.devices/
+.canvas/
+.auto-fix-state
+
+# 备份目录
+backup_*.tar.gz
+
+# 其他
+package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+permissions.json
