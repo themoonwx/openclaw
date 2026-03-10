@@ -43,6 +43,12 @@ export async function handleWecomAgentPostDispatchFallback({
   }
 
   // 不再直接 return，继续尝试从 transcript 获取回复
+  // 如果已经发送过回复，不再启动 late reply watcher
+  if (state.hasDeliveredReply) {
+    logger?.info?.("wecom: reply already delivered, skipping late watcher");
+    return;
+  }
+
   // if (state.hasDeliveredReply || state.hasDeliveredPartialReply) return;
 
   const counts = dispatchResult?.counts ?? {};
@@ -54,6 +60,12 @@ export async function handleWecomAgentPostDispatchFallback({
     await startLateReplyWatcher("queued-no-final");
     return;
   }
+  // 如果已经发送过回复，不再启动 late reply watcher
+  if (state.hasDeliveredReply) {
+    logger?.info?.("wecom: reply already delivered, skipping late watcher");
+    return;
+  }
+
 
   logger?.warn?.("wecom: dispatch finished without direct final delivery; waiting via late watcher");
   await sendProgressNotice(processingNoticeText);
