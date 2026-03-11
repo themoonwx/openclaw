@@ -86,8 +86,8 @@ A股: 震荡上行，成交量 1.2万亿
 ### 手动触发
 
 ```
-@market 生成今日市场简报
-@market 昨日市场总结
+@mk 生成今日市场简报
+@mk 昨日市场总结
 ```
 
 ### 自动生成
@@ -96,7 +96,7 @@ A股: 震荡上行，成交量 1.2万亿
 
 ```bash
 # cron 配置
-0 8 * * * curl -X POST http://localhost:18789/agents/market/skill/market-report
+0 8 * * * curl -X POST http://localhost:18789/agents/mk/skill/mk-report
 ```
 
 ## 数据来源
