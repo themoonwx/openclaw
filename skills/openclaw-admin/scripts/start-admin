@@ -1,0 +1,5 @@
+#!/bin/bash
+# OpenClaw Admin 启动脚本
+
+cd /home/ubuntu/workspace/openclaw-admin/backend
+node server.js
