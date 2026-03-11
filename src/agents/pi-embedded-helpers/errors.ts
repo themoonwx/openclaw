@@ -711,6 +711,75 @@ export function formatAssistantErrorText(
   return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw;
 }
 
+/**
+ * Filters sensitive data from text to prevent token/API key leakage.
+ * Detects and masks patterns like tokens, API keys, passwords, etc.
+ */
+function filterSensitiveData(text: string): string {
+  if (!text) {
+    return text;
+  }
+
+  let filtered = text;
+
+  // Patterns for sensitive data detection
+  const sensitivePatterns = [
+    // Generic token patterns (long alphanumeric strings)
+    { pattern: /([a-zA-Z0-9_-]{20,60})/g, replacement: "[TOKEN]" },
+    // API keys (various formats)
+    {
+      pattern: /(api[_-]?key["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{16,})/gi,
+      replacement: "$1[API_KEY]",
+    },
+    // Bearer tokens
+    { pattern: /(Bearer\s+)([a-zA-Z0-9_-]{20,})/gi, replacement: "$1[TOKEN]" },
+    // Passwords in config
+    { pattern: /(password["']?\s*[:=]\s*["']?)([^"'}\s]{6,})/gi, replacement: "$1[PASSWORD]" },
+    // Secret keys
+    {
+      pattern: /(secret[_-]?key["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{16,})/gi,
+      replacement: "$1[SECRET]",
+    },
+    // Token fields in JSON
+    { pattern: /("token"\s*:\s*")([^"]+)(")/g, replacement: "$1[TOKEN]$3" },
+    { pattern: /("access_token"\s*:\s*")([^"]+)(")/g, replacement: "$1[TOKEN]$3" },
+    { pattern: /("app_secret"\s*:\s*")([^"]+)(")/g, replacement: "$1[SECRET]$3" },
+    { pattern: /("client_secret"\s*:\s*")([^"]+)(")/g, replacement: "$1[SECRET]$3" },
+    // OpenClaw config specific - channel tokens
+    { pattern: /("token"\s*:\s*")([A-Za-z0-9_-]{20,})/g, replacement: "$1[CHANNEL_TOKEN]$3" },
+    // WeCom specific
+    {
+      pattern: /(corp[_-]?secret["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{16,})/gi,
+      replacement: "$1[CORP_SECRET]",
+    },
+    // DingTalk specific
+    {
+      pattern: /(client[_-]?secret["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{16,})/gi,
+      replacement: "$1[CLIENT_SECRET]",
+    },
+  ];
+
+  for (const { pattern, replacement } of sensitivePatterns) {
+    filtered = filtered.replace(pattern, replacement);
+  }
+
+  // Additional check: look for common secret file content patterns
+  // Match file paths that likely contain secrets
+  const secretFilePaths = [/\.openclaw\/openclaw\.json/, /\.openclaw\/credentials\//, /\.env$/];
+
+  for (const pathPattern of secretFilePaths) {
+    if (pathPattern.test(filtered)) {
+      // If the text mentions secret files, add a warning
+      filtered = filtered.replace(
+        pathPattern,
+        (_match) => `[SENSITIVE_FILE_DETECTED - content hidden]`,
+      );
+    }
+  }
+
+  return filtered;
+}
+
 export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boolean }): string {
   if (!text) {
     return text;
@@ -762,7 +831,10 @@ export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boo
   // Strip leading blank lines (including whitespace-only lines) without clobbering indentation on
   // the first content line (e.g. markdown/code blocks).
   const withoutLeadingEmptyLines = stripped.replace(/^(?:[ \t]*\r?\n)+/, "");
-  return collapseConsecutiveDuplicateBlocks(withoutLeadingEmptyLines);
+
+  // Apply sensitive data filtering to protect tokens, API keys, passwords, etc.
+  const filtered = filterSensitiveData(withoutLeadingEmptyLines);
+  return collapseConsecutiveDuplicateBlocks(filtered);
 }
 
 export function isRateLimitAssistantError(msg: AssistantMessage | undefined): boolean {
