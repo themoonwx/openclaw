@@ -725,7 +725,7 @@ function filterSensitiveData(text: string): string {
   // Patterns for sensitive data detection
   const sensitivePatterns = [
     // Generic token patterns (long alphanumeric strings)
-    { pattern: /([a-zA-Z0-9_-]{20,60})(?![a-zA-Z/:])/g, replacement: "[TOKEN]" },
+    // { pattern: /([a-zA-Z0-9_-]{20,60})(?![a-zA-Z/:])/g, replacement: "[TOKEN]" }, // Disabled - too aggressive, causes false positives with URLs
     // API keys (various formats)
     {
       pattern: /(api[_-]?key["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{16,})/gi,
